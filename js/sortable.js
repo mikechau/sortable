@@ -1,5 +1,5 @@
 (function() {
-  var SELECTOR, addEventListener, clickEvents, numberRegExp, sortable, touchDevice, trimRegExp;
+  var SELECTOR, addEventListener, clickEvents, numberRegExp, removeEventListener, sortable, touchDevice, trimRegExp;
 
   SELECTOR = 'table[data-sortable]';
 
@@ -23,7 +23,16 @@
     }
   };
 
+  removeEventListener = function(el, event, handler) {
+    if (el.removeEventListener != null) {
+      return el.removeEventListener(event, handler, false);
+    } else {
+      return el.detachEvent("on" + event, handler);
+    }
+  };
+
   sortable = {
+    events: {},
     init: function(options) {
       var table, tables, _i, _len, _results;
       if (options == null) {
@@ -40,17 +49,40 @@
       }
       return _results;
     },
+    destroy: function(options) {
+      var table, tables, _i, _len, _results;
+      if (options == null) {
+        options = {};
+      }
+      if (options.selector == null) {
+        options.selector = SELECTOR;
+      }
+      tables = document.querySelectorAll(options.selector);
+      _results = [];
+      for (_i = 0, _len = tables.length; _i < _len; _i++) {
+        table = tables[_i];
+        _results.push(sortable.destroyTable(table));
+      }
+      return _results;
+    },
     initTable: function(table) {
-      var i, th, ths, _i, _len, _ref;
+      var eventName, i, sortableId, th, ths, _i, _j, _len, _len1, _ref;
       if (((_ref = table.tHead) != null ? _ref.rows.length : void 0) !== 1) {
         return;
       }
       if (table.getAttribute('data-sortable-initialized') === 'true') {
         return;
       }
+      sortableId = (new Date).getTime();
+      sortable.events[sortableId] = {};
+      for (_i = 0, _len = clickEvents.length; _i < _len; _i++) {
+        eventName = clickEvents[_i];
+        sortable.events[sortableId][eventName] = {};
+      }
+      table.setAttribute('data-sortable-id', sortableId);
       table.setAttribute('data-sortable-initialized', 'true');
       ths = table.querySelectorAll('th');
-      for (i = _i = 0, _len = ths.length; _i < _len; i = ++_i) {
+      for (i = _j = 0, _len1 = ths.length; _j < _len1; i = ++_j) {
         th = ths[i];
         if (th.getAttribute('data-sortable') !== 'false') {
           sortable.setupClickableTH(table, th, i);
@@ -58,16 +90,56 @@
       }
       return table;
     },
+    destroyTable: function(table) {
+      var i, sortableId, th, ths, _i, _len, _ref;
+      if (((_ref = table.tHead) != null ? _ref.rows.length : void 0) !== 1) {
+        return;
+      }
+      if (table.getAttribute('data-sortable-initialized') === 'false') {
+        return;
+      }
+      sortableId = table.getAttribute('data-sortable-id');
+      table.setAttribute('data-sortable-initialized', 'false');
+      ths = table.querySelectorAll('th');
+      for (i = _i = 0, _len = ths.length; _i < _len; i = ++_i) {
+        th = ths[i];
+        if (th.getAttribute('data-sortable') !== 'false') {
+          th.removeAttribute('data-sorted');
+          th.removeAttribute('data-sorted-direction');
+          sortable.removeClickableTH(table, th, i);
+        }
+      }
+      delete sortable.events[sortableId];
+      table.removeAttribute('data-sortable');
+      table.removeAttribute('data-sortable-id');
+      table.removeAttribute('data-sortable-initialized');
+      return table;
+    },
+    removeClickableTH: function(table, th, i) {
+      var eventName, onClick, sortableId, _i, _len, _results;
+      sortableId = table.getAttribute('data-sortable-id');
+      _results = [];
+      for (_i = 0, _len = clickEvents.length; _i < _len; _i++) {
+        eventName = clickEvents[_i];
+        onClick = sortable.events[sortableId][eventName][i];
+        _results.push(removeEventListener(th, eventName, onClick));
+      }
+      return _results;
+    },
     setupClickableTH: function(table, th, i) {
-      var eventName, onClick, type, _i, _len, _results;
+      var eventHandled, eventName, onClick, sortableId, type, _i, _len, _results;
+      sortableId = table.getAttribute('data-sortable-id');
       type = sortable.getColumnType(table, i);
+      eventHandled = false;
       onClick = function(e) {
         var compare, item, newSortedDirection, position, row, rowArray, sorted, sortedDirection, tBody, ths, value, _compare, _i, _j, _k, _l, _len, _len1, _len2, _len3, _len4, _m, _ref, _ref1;
-        if (e.handled !== true) {
-          e.handled = true;
-        } else {
-          return false;
+        if (eventHandled) {
+          return;
         }
+        eventHandled = true;
+        setTimeout(function() {
+          return eventHandled = false;
+        }, 0);
         sorted = this.getAttribute('data-sorted') === 'true';
         sortedDirection = this.getAttribute('data-sorted-direction');
         if (sorted) {
@@ -138,6 +210,7 @@
       _results = [];
       for (_i = 0, _len = clickEvents.length; _i < _len; _i++) {
         eventName = clickEvents[_i];
+        sortable.events[sortableId][eventName][i] = onClick;
         _results.push(addEventListener(th, eventName, onClick));
       }
       return _results;

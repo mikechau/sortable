@@ -13,17 +13,38 @@ addEventListener = (el, event, handler) ->
   else
     el.attachEvent "on#{ event }", handler
 
+removeEventListener = (el, event, handler) ->
+  if el.removeEventListener?
+    el.removeEventListener event, handler, false
+  else
+    el.detachEvent "on#{ event }", handler
+
 sortable =
+  events: {}
+
   init: (options={}) ->
     options.selector ?= SELECTOR
 
     tables = document.querySelectorAll options.selector
     sortable.initTable table for table in tables
 
+  destroy: (options={}) ->
+    options.selector ?= SELECTOR
+
+    tables = document.querySelectorAll options.selector
+    sortable.destroyTable table for table in tables
+
   initTable: (table) ->
     return if table.tHead?.rows.length isnt 1
     return if table.getAttribute('data-sortable-initialized') is 'true'
 
+    sortableId = (new Date).getTime()
+    sortable.events[sortableId] = {}
+
+    for eventName in clickEvents
+      sortable.events[sortableId][eventName] = {}
+
+    table.setAttribute 'data-sortable-id', sortableId
     table.setAttribute 'data-sortable-initialized', 'true'
 
     ths = table.querySelectorAll('th')
@@ -34,7 +55,39 @@ sortable =
 
     table
 
+  destroyTable: (table) ->
+    return if table.tHead?.rows.length isnt 1
+    return if table.getAttribute('data-sortable-initialized') is 'false'
+
+    sortableId = table.getAttribute('data-sortable-id')
+    table.setAttribute 'data-sortable-initialized', 'false'
+
+    ths = table.querySelectorAll('th')
+
+    for th, i in ths
+      if th.getAttribute('data-sortable') isnt 'false'
+        th.removeAttribute('data-sorted')
+        th.removeAttribute('data-sorted-direction')
+        sortable.removeClickableTH table, th, i
+
+    delete sortable.events[sortableId]
+
+    table.removeAttribute('data-sortable')
+    table.removeAttribute('data-sortable-id')
+    table.removeAttribute('data-sortable-initialized')
+
+    table
+
+  removeClickableTH: (table, th, i) ->
+    sortableId = table.getAttribute('data-sortable-id')
+
+    for eventName in clickEvents
+      onClick = sortable.events[sortableId][eventName][i]
+      removeEventListener th, eventName, onClick
+
   setupClickableTH: (table, th, i) ->
+    sortableId = table.getAttribute('data-sortable-id')
+
     type = sortable.getColumnType table, i
 
     eventHandled = false
@@ -101,6 +154,7 @@ sortable =
         table.dispatchEvent?(new CustomEvent 'Sortable.sorted', { bubbles: true })
 
     for eventName in clickEvents
+      sortable.events[sortableId][eventName][i] = onClick
       addEventListener th, eventName, onClick
 
   getColumnType: (table, i) ->
